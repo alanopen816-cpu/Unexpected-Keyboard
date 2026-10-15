@@ -317,6 +317,7 @@ public final class KeyEventHandler
 
   public void suggestion_entered(String text, boolean add_space_after)
   {
+    String chosen = text;
     if (add_space_after)
       text = text + " ";
     String old = _typedword.get();
@@ -325,6 +326,17 @@ public final class KeyEventHandler
     last_replaced_word = old;
     last_replacement_word_len = text.length();
     _next_last_action = LastAction.SUGGESTION_ENTERED;
+    if (learnAllowed() && old.length() >= 2)
+    {
+      LearnEvents.Selected selected = LearnEvents.suggestionSelected(
+          _learned_text, textDict(), old, chosen, _commitPrev);
+      if (selected != null)
+      {
+        _last_tap_learned = selected.to;
+        _last_tap_from = selected.from;
+        _last_tap_to = selected.to;
+      }
+    }
   }
 
   @Override
@@ -336,6 +348,21 @@ public final class KeyEventHandler
   @Override
   public void currently_typed_word(String word)
   {
+    String current = word == null ? "" : word;
+    if (!_in_programmatic_replace && learnAllowed()
+        && !_typedword.is_selection_not_empty()
+        && _prev_typed_for_learn.length() >= 2 && current.isEmpty()
+        && !_prev_typed_for_learn.equals(_last_tap_learned))
+    {
+      LearnEvents.wordCommitted(_learned_text, textDict(),
+          _prev_typed_for_learn,
+          _commitPrev.isEmpty() ? null : _commitPrev,
+          _commitPrev2.isEmpty() ? null : _commitPrev2);
+      _commitPrev2 = _commitPrev;
+      _commitPrev = _prev_typed_for_learn;
+    }
+    if (current.isEmpty()) _last_tap_learned = null;
+    _prev_typed_for_learn = current;
     _suggestions.currently_typed_word(word);
   }
 
@@ -755,8 +782,11 @@ public final class KeyEventHandler
     if (_last_action == LastAction.SUGGESTION_ENTERED
         && last_replaced_word != null)
     {
+      String restored = last_replaced_word;
       replace_surrounding_text(last_replacement_word_len, 0, last_replaced_word + " ");
       last_replaced_word = null;
+      if (learnAllowed())
+        LearnEvents.autocorrectionRejected(_learned_text, restored);
       _next_last_action = LastAction.SUGGESTION_UNDO;
     }
     else

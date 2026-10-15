@@ -144,7 +144,12 @@ public class Keyboard2 extends InputMethodService
     Receiver recvr = this.new Receiver();
     _suggestions = new Suggestions(recvr, _config);
     _keyeventhandler = new KeyEventHandler(_config, recvr, _suggestions);
-    // blocked: KeyEventHandler.attachLearning is introduced in the next integration lot.
+    try {
+      PrefKvStore kv = new PrefKvStore(prefs);
+      _keyeventhandler.attachLearning(new LearningStore(kv), new ShellLearning(kv));
+    } catch (Throwable t) {
+      Log.e("Keyboard2", "learning init failed", t);
+    }
     KeyValue.Stateful._handler = recvr;
     _config.handler = _keyeventhandler;
     prefs.registerOnSharedPreferenceChangeListener(this);
@@ -287,7 +292,10 @@ public class Keyboard2 extends InputMethodService
     _currentSpecialLayout = refresh_special_layout();
     _keyboard_layout_view.setKeyboard(current_layout());
     _keyeventhandler.started();
-    // blocked: resync_coding and set_termux_text are added with the next KeyEventHandler lot.
+    _keyeventhandler.resync_coding(fresh);
+    _keyeventhandler.set_termux_text(
+        mode == KeyboardMode.TEXT && EditorProfile.TERMUX_PACKAGE.equals(_current_package),
+        fresh);
     refresh_candidates_view();
   }
 
