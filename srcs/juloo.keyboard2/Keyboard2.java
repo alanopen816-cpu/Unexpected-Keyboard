@@ -143,6 +143,7 @@ public class Keyboard2 extends InputMethodService
     _config = Config.globalConfig();
     Receiver recvr = this.new Receiver();
     _suggestions = new Suggestions(recvr, _config);
+    _suggestions.set_user_dictionary(new UserDictionarySource(getContentResolver()));
     _keyeventhandler = new KeyEventHandler(_config, recvr, _suggestions);
     try {
       PrefKvStore kv = new PrefKvStore(prefs);

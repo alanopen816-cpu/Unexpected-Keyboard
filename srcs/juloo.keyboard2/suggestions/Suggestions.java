@@ -7,6 +7,7 @@ import juloo.keyboard2.dict.Dictionaries;
 import juloo.keyboard2.Config;
 import juloo.keyboard2.ComposeKey;
 import juloo.keyboard2.ComposeKeyData;
+import juloo.keyboard2.CompositeWordSource;
 import juloo.keyboard2.LearningStore;
 import juloo.keyboard2.TextEngine;
 
@@ -19,6 +20,7 @@ public final class Suggestions
   boolean _enabled;
   LearningStore _learned;
   TextEngine.WordSource _source;
+  TextEngine.WordSource _userDictionary;
 
   /** Current suggestions. The best suggestion is at index [0]. */
   public String[] suggestions = new String[MAX_COUNT];
@@ -37,9 +39,13 @@ public final class Suggestions
 
   public void set_sources(TextEngine.WordSource src, LearningStore learned)
   {
-    _source = src;
+    _source = _userDictionary == null ? src : new CompositeWordSource(java.util.Arrays.asList(
+        new CompositeWordSource.Source(src == null ? TextEngine.EMPTY : src, "primary", CompositeWordSource.PRIO_BASE, null, false, false),
+        new CompositeWordSource.Source(_userDictionary, "user", CompositeWordSource.PRIO_REGIONAL, null, true, false)));
     _learned = learned;
   }
+
+  public void set_user_dictionary(TextEngine.WordSource source) { _userDictionary = source; }
 
   public void started()
   {
