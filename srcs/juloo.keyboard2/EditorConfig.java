@@ -40,6 +40,13 @@ public final class EditorConfig
   // Doesn't override [_config.suggestions_enabled].
   public boolean should_show_candidates_view;
 
+  /** Profile used to select editor-specific behavior. */
+  public EditorProfile profile = EditorProfile.NORMAL;
+  /** Whether this editor may contribute to local learning. */
+  public boolean allow_learning = true;
+  /** Whether the current field contains sensitive input. */
+  public boolean sensitive_field = false;
+
   public EditorConfig() {}
 
   public void refresh(EditorInfo info, Resources res)

@@ -26,6 +26,7 @@ public final class KeyValue implements Comparable<KeyValue>
     SWITCH_VOICE_TYPING_CHOOSER,
     HIDE_SELF,
     CHANGE_DICTIONARY,
+    SWITCH_KEYBOARD_MODE,
   }
 
   // Must be evaluated in the reverse order of their values.
