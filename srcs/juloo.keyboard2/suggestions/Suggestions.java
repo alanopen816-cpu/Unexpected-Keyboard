@@ -7,6 +7,8 @@ import juloo.keyboard2.dict.Dictionaries;
 import juloo.keyboard2.Config;
 import juloo.keyboard2.ComposeKey;
 import juloo.keyboard2.ComposeKeyData;
+import juloo.keyboard2.LearningStore;
+import juloo.keyboard2.TextEngine;
 
 /** Keep track of the word being typed and provide suggestions for
     [CandidatesView]. */
@@ -15,6 +17,8 @@ public final class Suggestions
   Callback _callback;
   Config _config;
   boolean _enabled;
+  LearningStore _learned;
+  TextEngine.WordSource _source;
 
   /** Current suggestions. The best suggestion is at index [0]. */
   public String[] suggestions = new String[MAX_COUNT];
@@ -31,6 +35,12 @@ public final class Suggestions
     _config = conf;
   }
 
+  public void set_sources(TextEngine.WordSource src, LearningStore learned)
+  {
+    _source = src;
+    _learned = learned;
+  }
+
   public void started()
   {
     _enabled = _config.editor_config.should_show_candidates_view;
@@ -39,9 +49,9 @@ public final class Suggestions
 
   public void currently_typed_word(String word)
   {
-    if (!_enabled)
+    if (!_enabled || !_config.suggestions_enabled)
       return;
-    if (word.length() < 2 || _config.current_dictionary == null)
+    if (word.length() < 2)
       clear();
     else
       query_suggestions(word);
@@ -58,28 +68,35 @@ public final class Suggestions
 
   int query_suggestions(String word)
   {
-    Cdict dict = _config.current_dictionary;
+    TextEngine.WordSource src = _source == null ? TextEngine.EMPTY : _source;
     boolean first_char_upper = Character.isUpperCase(word.charAt(0));
     word = apply_substitutions(word);
-    Cdict.Result r = dict.find(word);
-    int i = 0;
-    if (r.found)
-      suggestions[i++] = dict.word(r.index);
-    int[] suffixes = dict.suffixes(r, MAX_COUNT);
-    // Disable distance search for small words
-    int[] dist = (word.length() < 3 || i + 1 >= MAX_COUNT) ? NO_RESULTS :
-      dict.distance(word, 1, MAX_COUNT);
-    for (int j = 0; j < MAX_COUNT && i < MAX_COUNT; j++)
-    {
-      if (suffixes.length > j)
-        suggestions[i++] = dict.word(suffixes[j]);
-      if (dist.length > j && i < MAX_COUNT)
-        suggestions[i++] = dict.word(dist[j]);
-    }
+    TextEngine.Result r = TextEngine.suggest(null, word, src, _learned);
+    int i = fill_strip(suggestions, word, r, src, _learned);
     if (first_char_upper)
       capitalize_results(suggestions, i);
     emoji_suggestion = query_emoji(word); // word with substitutions applied
     count = i;
+    return i;
+  }
+
+  static int fill_strip(String[] out, String word, TextEngine.Result r,
+      TextEngine.WordSource src, LearningStore learned)
+  {
+    int n = Math.min(out.length, MAX_COUNT);
+    int i = 0;
+    if (src.contains(word) || src.contains(TextEngine.normalize(word))
+        || (learned != null && (learned.isPersonal(word) || learned.isProtected(word))))
+    {
+      out[i++] = word;
+    }
+    for (String candidate : r.suggestions)
+    {
+      if (i >= n)
+        break;
+      if (!candidate.equals(word))
+        out[i++] = candidate;
+    }
     return i;
   }
 
@@ -119,8 +136,6 @@ public final class Suggestions
     }
     return b.toString();
   }
-
-  static final int[] NO_RESULTS = new int[0];
 
   public static interface Callback
   {
