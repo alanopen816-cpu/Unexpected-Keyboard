@@ -15,6 +15,7 @@
   </PreferenceCategory>
   <PreferenceCategory android:title="@string/pref_category_suggestions">
     <SwitchPreference android:key="allow_learning" android:title="Personalized suggestions" android:defaultValue="true"/>
+    <EditTextPreference android:key="no_learn_packages" android:title="Don't learn in these apps" android:summary="Comma-separated package names" android:defaultValue=""/>
     <Preference android:key="clear_learning_data" android:title="Clear learning data"/>
     <CheckBoxPreference android:key="suggestions" android:title="@string/pref_suggestions_title" android:summary="@string/pref_suggestions_summary" android:defaultValue="true"/>
     <CheckBoxPreference android:key="space_bar_auto_complete" android:title="@string/pref_space_bar_auto_complete_title" android:summary="@string/pref_space_bar_auto_complete_summary" android:defaultValue="false"/>

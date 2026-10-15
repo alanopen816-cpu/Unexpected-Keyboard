@@ -6,8 +6,10 @@ import android.content.res.Resources;
 import android.util.DisplayMetrics;
 import android.util.TypedValue;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import juloo.cdict.Cdict;
 import juloo.keyboard2.dict.Dictionaries;
 import juloo.keyboard2.prefs.CustomExtraKeysPreference;
@@ -78,6 +80,7 @@ public final class Config
   public boolean coding_suggest_commands;
   public boolean coding_suggest_tech;
   public String keyboard_mode_stored;
+  public Set<String> no_learn_packages = new HashSet<String>();
   public boolean space_bar_auto_complete;
   public boolean physical_keyboard_hide;
 
@@ -154,6 +157,13 @@ public final class Config
     suggestions_enabled = _prefs.getBoolean("suggestions", true);
     suggestions_add_space = _prefs.getBoolean("suggestions_add_space", true);
     editor_config.allow_learning = _prefs.getBoolean("allow_learning", true);
+    no_learn_packages.clear();
+    String noLearnPackages = _prefs.getString("no_learn_packages", "");
+    for (String packageName : noLearnPackages.split(","))
+    {
+      packageName = packageName.trim();
+      if (!packageName.isEmpty()) no_learn_packages.add(packageName);
+    }
     // The baseline for the swipe distance correspond to approximately the
     // width of a key in portrait mode, as most layouts have 10 columns.
     // Multipled by the DPI ratio because most swipes are made in the diagonals.

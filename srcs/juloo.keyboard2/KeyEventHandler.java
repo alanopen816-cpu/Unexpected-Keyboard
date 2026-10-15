@@ -59,6 +59,7 @@ public final class KeyEventHandler
   String _last_auto_from = null;
   String _last_auto_to = null;
   boolean _in_programmatic_replace = false;
+  String _current_package;
 
   public KeyEventHandler(Config conf, IReceiver recv, Suggestions sg)
   {
@@ -109,6 +110,11 @@ public final class KeyEventHandler
     _learned_shell = shell;
   }
 
+  void setCurrentPackage(String packageName)
+  {
+    _current_package = packageName;
+  }
+
   void ensureLearning()
   {
     if (_learned_text != null && _learned_shell != null) return;
@@ -137,19 +143,27 @@ public final class KeyEventHandler
 
   LearningStore textLearnedForSuggest()
   {
-    return _config.editor_config.allow_learning ? _learned_text : null;
+    return learnAllowed() ? _learned_text : null;
   }
 
   boolean learnAllowed()
   {
-    return _config.editor_config.allow_learning && _learned_text != null
+    return _config.editor_config.allow_learning && !noLearnForCurrentPackage()
+        && _learned_text != null
         && !sensitiveEditor();
   }
 
   boolean shellLearnAllowed()
   {
-    return _config.editor_config.allow_learning && _learned_shell != null
+    return _config.editor_config.allow_learning && !noLearnForCurrentPackage()
+        && _learned_shell != null
         && !sensitiveEditor();
+  }
+
+  boolean noLearnForCurrentPackage()
+  {
+    return _current_package != null
+        && _config.no_learn_packages.contains(_current_package);
   }
 
   boolean sensitiveEditor()

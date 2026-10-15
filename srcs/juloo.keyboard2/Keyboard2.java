@@ -283,6 +283,7 @@ public class Keyboard2 extends InputMethodService
 
   void applyKeyboardMode(KeyboardMode mode)
   {
+    _keyeventhandler.setCurrentPackage(_current_package);
     _current_mode = mode;
     boolean fresh = mode != _last_mode || !equals_package(_current_package, _last_mode_package);
     _last_mode = mode;
