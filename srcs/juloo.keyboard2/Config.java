@@ -153,6 +153,7 @@ public final class Config
     number_row_symbols = number_row.equals("symbols");
     suggestions_enabled = _prefs.getBoolean("suggestions", true);
     suggestions_add_space = _prefs.getBoolean("suggestions_add_space", true);
+    editor_config.allow_learning = _prefs.getBoolean("allow_learning", true);
     // The baseline for the swipe distance correspond to approximately the
     // width of a key in portrait mode, as most layouts have 10 columns.
     // Multipled by the DPI ratio because most swipes are made in the diagonals.
