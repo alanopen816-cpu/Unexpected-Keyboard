@@ -6,8 +6,10 @@ import android.content.res.Resources;
 import android.util.DisplayMetrics;
 import android.util.TypedValue;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import juloo.cdict.Cdict;
 import juloo.keyboard2.dict.Dictionaries;
 import juloo.keyboard2.prefs.CustomExtraKeysPreference;
@@ -75,6 +77,10 @@ public final class Config
   public int circle_sensitivity;
   public boolean clipboard_history_enabled;
   public int clipboard_history_duration;
+  public boolean coding_suggest_commands;
+  public boolean coding_suggest_tech;
+  public String keyboard_mode_stored;
+  public Set<String> no_learn_packages = new HashSet<String>();
   public boolean space_bar_auto_complete;
   public boolean physical_keyboard_hide;
 
@@ -150,6 +156,14 @@ public final class Config
     number_row_symbols = number_row.equals("symbols");
     suggestions_enabled = _prefs.getBoolean("suggestions", true);
     suggestions_add_space = _prefs.getBoolean("suggestions_add_space", true);
+    editor_config.allow_learning = _prefs.getBoolean("allow_learning", true);
+    no_learn_packages.clear();
+    String noLearnPackages = _prefs.getString("no_learn_packages", "");
+    for (String packageName : noLearnPackages.split(","))
+    {
+      packageName = packageName.trim();
+      if (!packageName.isEmpty()) no_learn_packages.add(packageName);
+    }
     // The baseline for the swipe distance correspond to approximately the
     // width of a key in portrait mode, as most layouts have 10 columns.
     // Multipled by the DPI ratio because most swipes are made in the diagonals.
@@ -203,6 +217,9 @@ public final class Config
     clipboard_history_duration = Integer.parseInt(_prefs.getString("clipboard_history_duration", "5"));
     space_bar_auto_complete = _prefs.getBoolean("space_bar_auto_complete", false);
     physical_keyboard_hide = _prefs.getString("physical_keyboard_behavior", "hide").equals("hide");
+    coding_suggest_commands = _prefs.getBoolean("coding_suggest_commands", true);
+    coding_suggest_tech = _prefs.getBoolean("coding_suggest_tech", true);
+    keyboard_mode_stored = _prefs.getString(KeyboardMode.PREF_KEY, null);
     float screen_width_dp = dm.widthPixels / dm.density;
     wide_screen = screen_width_dp >= WIDE_DEVICE_THRESHOLD;
     split_layout = get_split_layout();
@@ -231,6 +248,17 @@ public final class Config
   {
     clipboard_history_enabled = e;
     _prefs.edit().putBoolean("clipboard_history_enabled", e).apply();
+  }
+
+  public KeyboardMode resolveKeyboardMode(String packageName)
+  {
+    return KeyboardMode.effective(keyboard_mode_stored, packageName);
+  }
+
+  public void saveKeyboardMode(KeyboardMode mode)
+  {
+    keyboard_mode_stored = mode.name();
+    _prefs.edit().putString(KeyboardMode.PREF_KEY, mode.name()).apply();
   }
 
   private float get_dip_pref(DisplayMetrics dm, String pref_name, float def)

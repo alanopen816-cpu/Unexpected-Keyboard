@@ -1,6 +1,7 @@
 package juloo.keyboard2;
 
 import android.annotation.SuppressLint;
+import android.content.SharedPreferences;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.KeyCharacterMap;
@@ -9,6 +10,8 @@ import android.view.inputmethod.ExtractedText;
 import android.view.inputmethod.ExtractedTextRequest;
 import android.view.inputmethod.InputConnection;
 import java.util.Iterator;
+import java.util.ArrayList;
+import java.util.List;
 import juloo.keyboard2.suggestions.Suggestions;
 
 public final class KeyEventHandler
@@ -34,6 +37,29 @@ public final class KeyEventHandler
   /** Remember the action that was handled. This is used by autocorrect. */
   LastAction _last_action = null;
   LastAction _next_last_action = null;
+  boolean _coding = false;
+  boolean _coding_suggest_commands = true;
+  boolean _coding_suggest_tech = true;
+  boolean _coding_suggestions_on = true;
+  boolean _space_bar_auto_complete = false;
+  final LocalLine _coding_line = new LocalLine();
+  boolean _termux_text = false;
+  final LocalLine _text_line = new LocalLine();
+  LearningStore _learned_text = null;
+  ShellLearning _learned_shell = null;
+  boolean last_replacement_trailing_sep = false;
+  String _prev_typed_for_learn = "";
+  String _last_tap_learned = null;
+  String _commitPrev = "";
+  String _commitPrev2 = "";
+  String _last_tap_from = null;
+  String _last_tap_to = null;
+  String _last_shell_prev = null;
+  String _last_shell_token = null;
+  String _last_auto_from = null;
+  String _last_auto_to = null;
+  boolean _in_programmatic_replace = false;
+  String _current_package;
 
   public KeyEventHandler(Config conf, IReceiver recv, Suggestions sg)
   {
@@ -56,7 +82,174 @@ public final class KeyEventHandler
     _suggestions.started();
     _move_cursor_force_fallback =
       _config.editor_config.should_move_cursor_force_fallback;
+    _space_bar_auto_complete = _config.space_bar_auto_complete;
     _last_action = null;
+    _coding = _config.editor_config.profile == EditorProfile.CODING;
+    if (_coding)
+    {
+      _coding_suggest_commands = _config.coding_suggest_commands;
+      _coding_suggest_tech = _config.coding_suggest_tech;
+      _coding_suggestions_on = _config.suggestions_enabled;
+      _coding_line.expected_cursor = _config.editor_config.initial_sel_start;
+    }
+    last_replaced_word = null;
+    last_replacement_trailing_sep = false;
+    _prev_typed_for_learn = "";
+    _commitPrev = "";
+    _commitPrev2 = "";
+    _last_auto_from = null;
+    _last_auto_to = null;
+    _last_tap_learned = null;
+    ensureLearning();
+    pushStripSources();
+  }
+
+  public void attachLearning(LearningStore text, ShellLearning shell)
+  {
+    _learned_text = text;
+    _learned_shell = shell;
+  }
+
+  void setCurrentPackage(String packageName)
+  {
+    _current_package = packageName;
+  }
+
+  void ensureLearning()
+  {
+    if (_learned_text != null && _learned_shell != null) return;
+    try
+    {
+      SharedPreferences prefs = Config.globalPrefs();
+      if (prefs == null) return;
+      PrefKvStore kv = new PrefKvStore(prefs);
+      if (_learned_text == null) _learned_text = new LearningStore(kv);
+      if (_learned_shell == null) _learned_shell = new ShellLearning(kv);
+    }
+    catch (Throwable ignored) { }
+  }
+
+  TextEngine.WordSource textDict()
+  {
+    if (_config.current_dictionary != null)
+    {
+      String name = _config.current_dictionary_name == null ? "cdict" :
+          "cdict:" + _config.current_dictionary_name;
+      return CompositeWordSource.withFallback(
+          new CdictWordSource(_config.current_dictionary), name);
+    }
+    return FallbackWords.INSTANCE;
+  }
+
+  LearningStore textLearnedForSuggest()
+  {
+    return learnAllowed() ? _learned_text : null;
+  }
+
+  boolean learnAllowed()
+  {
+    return _config.editor_config.allow_learning && !noLearnForCurrentPackage()
+        && _learned_text != null
+        && !sensitiveEditor();
+  }
+
+  boolean shellLearnAllowed()
+  {
+    return _config.editor_config.allow_learning && !noLearnForCurrentPackage()
+        && _learned_shell != null
+        && !sensitiveEditor();
+  }
+
+  boolean noLearnForCurrentPackage()
+  {
+    return _current_package != null
+        && _config.no_learn_packages.contains(_current_package);
+  }
+
+  boolean sensitiveEditor()
+  {
+    return _config.editor_config.sensitive_field;
+  }
+
+  void pushStripSources()
+  {
+    if (_suggestions != null)
+      _suggestions.set_sources(textDict(), textLearnedForSuggest());
+  }
+
+  public void resync_coding(boolean fresh)
+  {
+    if (!_coding) return;
+    if (fresh) _coding_line.scanner.reset();
+    else _coding_line.scanner.loseConfidence();
+    refresh_coding_suggestions();
+  }
+
+  public void set_termux_text(boolean on, boolean fresh)
+  {
+    _termux_text = on && !_coding;
+    if (!_termux_text) return;
+    _space_bar_auto_complete = false;
+    if (fresh)
+    {
+      _text_line.scanner.reset();
+      last_replaced_word = null;
+    }
+    else _text_line.scanner.loseConfidence();
+    _text_line.expected_cursor = _config.editor_config.initial_sel_start;
+    refresh_text_suggestions();
+  }
+
+  LocalLine active_line() { return _coding ? _coding_line : _text_line; }
+
+  void refresh_active_suggestions()
+  {
+    if (_coding) refresh_coding_suggestions();
+    else refresh_text_suggestions();
+  }
+
+  void refresh_coding_suggestions()
+  {
+    List<String> suggestions;
+    if (!_coding_suggestions_on || _coding_line.scanner.isDirty())
+      suggestions = new ArrayList<>();
+    else
+    {
+      String previous = _coding_line.scanner.previous();
+      String current = _coding_line.scanner.current();
+      suggestions = CodingSuggestions.suggest(previous, current,
+          _coding_suggest_commands, _coding_suggest_tech);
+      if (shellLearnAllowed())
+      {
+        List<String> extra = current.isEmpty() ?
+            _learned_shell.after(previous == null ? "" : previous, 3) :
+            _learned_shell.completeTokens(current, 3);
+        if (!extra.isEmpty())
+        {
+          List<String> merged = new ArrayList<>();
+          for (String word : extra)
+            if (merged.size() < 3 && !merged.contains(word)
+                && !suggestions.contains(word) && !word.equals(current))
+              merged.add(word);
+          for (String word : suggestions)
+            if (merged.size() < 3) merged.add(word);
+          suggestions = merged;
+        }
+      }
+    }
+    _suggestions.currently_typed_word(suggestions.isEmpty() ? "" : suggestions.get(0));
+  }
+
+  void refresh_text_suggestions()
+  {
+    pushStripSources();
+    _suggestions.currently_typed_word(_text_line.scanner.current());
+  }
+
+  static final class LocalLine
+  {
+    final TokenScanner scanner = new TokenScanner();
+    int expected_cursor = -1;
   }
 
   /** Selection has been updated. */
@@ -138,6 +331,7 @@ public final class KeyEventHandler
 
   public void suggestion_entered(String text, boolean add_space_after)
   {
+    String chosen = text;
     if (add_space_after)
       text = text + " ";
     String old = _typedword.get();
@@ -146,6 +340,17 @@ public final class KeyEventHandler
     last_replaced_word = old;
     last_replacement_word_len = text.length();
     _next_last_action = LastAction.SUGGESTION_ENTERED;
+    if (learnAllowed() && old.length() >= 2)
+    {
+      LearnEvents.Selected selected = LearnEvents.suggestionSelected(
+          _learned_text, textDict(), old, chosen, _commitPrev);
+      if (selected != null)
+      {
+        _last_tap_learned = selected.to;
+        _last_tap_from = selected.from;
+        _last_tap_to = selected.to;
+      }
+    }
   }
 
   @Override
@@ -157,6 +362,21 @@ public final class KeyEventHandler
   @Override
   public void currently_typed_word(String word)
   {
+    String current = word == null ? "" : word;
+    if (!_in_programmatic_replace && learnAllowed()
+        && !_typedword.is_selection_not_empty()
+        && _prev_typed_for_learn.length() >= 2 && current.isEmpty()
+        && !_prev_typed_for_learn.equals(_last_tap_learned))
+    {
+      LearnEvents.wordCommitted(_learned_text, textDict(),
+          _prev_typed_for_learn,
+          _commitPrev.isEmpty() ? null : _commitPrev,
+          _commitPrev2.isEmpty() ? null : _commitPrev2);
+      _commitPrev2 = _commitPrev;
+      _commitPrev = _prev_typed_for_learn;
+    }
+    if (current.isEmpty()) _last_tap_learned = null;
+    _prev_typed_for_learn = current;
     _suggestions.currently_typed_word(word);
   }
 
@@ -554,7 +774,7 @@ public final class KeyEventHandler
   /** Implement autocorrect when enabled in the settings. */
   void handle_space_bar()
   {
-    if (_config.space_bar_auto_complete && _suggestions.count > 0
+    if (_space_bar_auto_complete && _suggestions.count > 0
         && !_typedword.is_selection_not_empty()
         && _typedword.cursor_relative() == 0
         && _last_action == LastAction.OTHER)
@@ -576,8 +796,11 @@ public final class KeyEventHandler
     if (_last_action == LastAction.SUGGESTION_ENTERED
         && last_replaced_word != null)
     {
+      String restored = last_replaced_word;
       replace_surrounding_text(last_replacement_word_len, 0, last_replaced_word + " ");
       last_replaced_word = null;
+      if (learnAllowed())
+        LearnEvents.autocorrectionRejected(_learned_text, restored);
       _next_last_action = LastAction.SUGGESTION_UNDO;
     }
     else

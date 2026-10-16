@@ -51,6 +51,10 @@ public class Keyboard2 extends InputMethodService
   private ViewGroup _emojiPane = null;
   private ViewGroup _clipboard_pane = null;
   private Handler _handler;
+  private String _current_package = null;
+  private KeyboardMode _current_mode = KeyboardMode.TEXT;
+  private String _last_mode_package = null;
+  private KeyboardMode _last_mode = null;
 
   private Config _config;
 
@@ -139,7 +143,14 @@ public class Keyboard2 extends InputMethodService
     _config = Config.globalConfig();
     Receiver recvr = this.new Receiver();
     _suggestions = new Suggestions(recvr, _config);
+    _suggestions.set_user_dictionary(new UserDictionarySource(getContentResolver()));
     _keyeventhandler = new KeyEventHandler(_config, recvr, _suggestions);
+    try {
+      PrefKvStore kv = new PrefKvStore(prefs);
+      _keyeventhandler.attachLearning(new LearningStore(kv), new ShellLearning(kv));
+    } catch (Throwable t) {
+      Log.e("Keyboard2", "learning init failed", t);
+    }
     KeyValue.Stateful._handler = recvr;
     _config.handler = _keyeventhandler;
     prefs.registerOnSharedPreferenceChangeListener(this);
@@ -264,11 +275,44 @@ public class Keyboard2 extends InputMethodService
   {
     _config.editor_config.refresh(info, getResources());
     refresh_config();
+    _current_package = info.packageName;
+    applyKeyboardMode(_config.resolveKeyboardMode(info.packageName));
+    setInputView(_keyboard_container_view);
+    Logs.debug_startup_input_view(info, _config);
+  }
+
+  void applyKeyboardMode(KeyboardMode mode)
+  {
+    _keyeventhandler.setCurrentPackage(_current_package);
+    _current_mode = mode;
+    boolean fresh = mode != _last_mode || !equals_package(_current_package, _last_mode_package);
+    _last_mode = mode;
+    _last_mode_package = _current_package;
+    _config.editor_config.profile = mode == KeyboardMode.SHELL ?
+        EditorProfile.CODING : EditorProfile.NORMAL;
+    apply_strip_override();
     _currentSpecialLayout = refresh_special_layout();
     _keyboard_layout_view.setKeyboard(current_layout());
     _keyeventhandler.started();
-    setInputView(_keyboard_container_view);
-    Logs.debug_startup_input_view(info, _config);
+    _keyeventhandler.resync_coding(fresh);
+    _keyeventhandler.set_termux_text(
+        mode == KeyboardMode.TEXT && EditorProfile.TERMUX_PACKAGE.equals(_current_package),
+        fresh);
+    refresh_candidates_view();
+  }
+
+  static boolean equals_package(String a, String b)
+  {
+    return a == null ? b == null : a.equals(b);
+  }
+
+  private void apply_strip_override()
+  {
+    if (_config != null && _config.suggestions_enabled && _current_package != null
+        && !_config.editor_config.sensitive_field
+        && (EditorProfile.TERMUX_PACKAGE.equals(_current_package)
+            || _config.editor_config.profile == EditorProfile.CODING))
+      _config.editor_config.should_show_candidates_view = true;
   }
 
   @Override
@@ -519,6 +563,12 @@ public class Keyboard2 extends InputMethodService
 
         case CHANGE_DICTIONARY:
           new DictionarySwitcher(Keyboard2.this, _dictionaries, this).choose();
+          break;
+
+        case SWITCH_KEYBOARD_MODE:
+          KeyboardMode next = _current_mode.toggle();
+          _config.saveKeyboardMode(next);
+          applyKeyboardMode(next);
           break;
       }
     }
